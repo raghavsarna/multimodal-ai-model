@@ -3,6 +3,7 @@ from transformers import BertModel
 from torchvision import models as vision_models
 import torch
 from meld_dataset import MELDDataset
+from sklearn.metrics import precision_score, accuracy_score
 
 class TextEncoder(nn.Module):
     def __init__(self):
@@ -132,6 +133,160 @@ class MultimodalSentimentModel(nn.Module):
             'sentiments': sentiment_output
         }
         
+        
+class MultimodalTrainer:
+    def __init__(self, model, train_loader, val_loader):
+        self.model = model
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        
+        #Log dataset sized
+        train_size = len(train_loader.dataset)
+        val_size = len(val_loader.dataset)
+        print("\nDataset Sizes:")
+        print(f"Training samples: {train_size:,}")
+        print(f"Validation samples: {val_size:,}")
+        print(f"Batches per epoch: {len(train_loader):,}\n")
+        
+        self.optimizer = torch.optim.Adam([
+            {'params': self.model.text_encoder.parameters(), 'lr': 8e-6},
+            {'params': self.model.video_encoder.parameters(), 'lr': 8e-5},
+            {'params': self.model.audio_encoder.parameters(), 'lr': 8e-5},
+            {'params': self.model.fusion_layer.parameters(), 'lr': 5e-4},
+            {'params': self.model.emotion_classifier.parameters(), 'lr': 5e-4},
+            {'params': self.model.sentiment_classifier.parameters(), 'lr': 5e-4}
+        ], weight_decay = 1e-5)
+        
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode="min",
+            factor=0.1,
+            patience = 2
+        )
+        
+        self.emotion_criterion = nn.CrossEntropyLoss(
+            label_smoothing = 0.05
+        )
+        
+        self.sentiment_criterion = nn.CrossEntropyLoss(
+            label_smoothing = 0.05
+        )
+    
+    def train_epoch(self):
+        self.model.train()
+        running_loss = {'total': 0, 'emotion': 0, 'sentiment': 0}
+        
+        for batch in self.train_loader:
+            device = next(self.model.parameters()).device
+            text_inputs = {
+                'input_ids': batch['text_inputs']['input_ids'].to(device),
+                'attention_mask': batch['text_inputs']['attention_mask'].to(device)
+            } 
+            video_frames = batch['video_frames'].to(device)
+            audio_features = batch['audio_features'].to(device)
+            emotions_labels = batch['emotion_label'].to(device)
+            sentiment_labels = batch['sentiment_label'].to(device)
+            
+            # no gradients carry over from last iteration
+            self.optimizer.zero_grad()
+            
+            # fwd pass
+            outputs = self.model(text_inputs, video_frames, audio_features)
+            
+            # calculate losses using raw logits
+            emotion_loss = self.emotion_criterion(outputs["emotions"], emotions_labels)
+
+            sentiment_loss = self.sentiment_criterion(outputs["sentiments"], sentiment_labels)
+            
+            total_loss = emotion_loss + sentiment_loss
+            
+            # backward pass. calculate gradients
+            total_loss.backward()
+            
+            # gradient clipping
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), max_norm=1.0
+            )
+            
+            self.optimizer.step()
+            
+            # track losses
+            running_loss['total'] += total_loss.item()
+            running_loss['emotion'] += emotion_loss.item()
+            running_loss['sentiment'] += sentiment_loss.item()
+            
+        return {k: v/len(self.train_loader) for k, v in running_loss.items()}
+    
+    def evaluate(self, data_loader, phase="val"):
+        self.model.eval()
+        losses = {'total': 0, 'emotion': 0, 'sentiment': 0}
+        all_emotion_preds = []
+        all_sentiment_preds = []
+        all_emotion_labels = []
+        all_sentiment_labels = []
+        
+        with torch.inference_mode():
+            for batch in data_loader:
+                device = next(self.model.parameters()).device
+                text_inputs = {
+                    'input_ids': batch['text_inputs']['input_ids'].to(device),
+                    'attention_mask': batch['text_inputs']['attention_mask'].to(device)
+                } 
+                video_frames = batch['video_frames'].to(device)
+                audio_features = batch['audio_features'].to(device)
+                emotions_labels = batch['emotion_label'].to(device)
+                sentiment_labels = batch['sentiment_label'].to(device)
+                
+                outputs = self.model(text_inputs, video_frames, audio_features)
+                
+                emotion_loss = self.emotion_criterion(outputs["emotions"], emotions_labels)
+                sentiment_loss = self.sentiment_criterion(outputs["sentiments"], sentiment_labels)
+                
+                total_loss = emotion_loss + sentiment_loss
+                
+                all_emotion_preds.extend(
+                    outputs["emotions"].argmax(dim=1).cpu().numpy()
+                )
+                all_emotion_labels.extend(emotions_labels.cpu().numpy())
+                
+                all_sentiment_preds.extend(
+                    outputs["sentiments"].argmax(dim=1).cpu().numpy()
+                )
+                all_sentiment_labels.extend(sentiment_labels.cpu().numpy())
+                
+                #track losses
+                losses['total'] += total_loss.item()
+                losses['emotion'] += emotion_loss.item()
+                losses['sentiment'] += sentiment_loss.item()
+        
+        avg_loss = {k: v/len(data_loader) for k, v in losses.items()}
+        
+        #compute the precision and accuracy
+        emotion_precision = precision_score(
+            all_emotion_labels, all_emotion_preds, average='weighted'
+        )
+        emotion_accuracy = accuracy_score(
+            all_emotion_labels, all_emotion_preds
+        )
+        
+        sentiment_precision = precision_score(
+            all_sentiment_labels, all_sentiment_preds, average='weighted'
+        )
+        sentiment_accuracy = accuracy_score(
+            all_sentiment_labels, all_sentiment_preds
+        )
+        
+        if phase == "val":
+            self.scheduler.step(avg_loss['total'])
+        
+        return avg_loss, {
+            'emotion_precision': emotion_precision,
+            'emotion_accuracy': emotion_accuracy,
+            'sentiment_precision': sentiment_precision,
+            'sentiment_accuracy': sentiment_accuracy
+        }
+
+ 
 if __name__ == "__main__":
     dataset = MELDDataset(
         '../dataset/train/train_sent_emo.csv', '../dataset/train/train_splits'
