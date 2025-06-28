@@ -1,0 +1,5 @@
+# Ignore the dataset directory
+/dataset/
+
+# Ignore the MELD.Raw.tar.gz file
+/MELD.Raw.tar.gz

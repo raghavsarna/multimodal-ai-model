@@ -1,0 +1,4 @@
+Taken from: https://affective-meld.github.io/
+
+Run the command to download:
+wget https://huggingface.co/datasets/declare-lab/MELD/resolve/main/MELD.Raw.tar.gz
