@@ -4,7 +4,7 @@ import torchaudio
 import torch
 from meld_dataset import prepare_dataloaders
 from models import MultimodalSentimentModel, MultimodalTrainer
-import tqdm
+from tqdm import tqdm
 import json
 from install_ffmpeg import install_ffmpeg
 import sys
@@ -54,11 +54,11 @@ def main():
     
     train_loader, val_loader, test_loader = prepare_dataloaders(
         train_csv = os.path.join(args.train_dir, 'train_sent_emo.csv'),
-        train_video = os.path.join(args.train_dir, 'train_splits'),
+        train_video_dir = os.path.join(args.train_dir, 'train_splits'),
         dev_csv = os.path.join(args.val_dir, 'dev_sent_emo.csv'),
-        dev_video = os.path.join(args.val_dir, 'dev_splits_complete'),
+        dev_video_dir = os.path.join(args.val_dir, 'dev_splits_complete'),
         test_csv = os.path.join(args.test_dir, 'test_sent_emo.csv'),
-        test_video = os.path.join(args.test_dir, 'output_repeated_splits_test'),
+        test_video_dir = os.path.join(args.test_dir, 'output_repeated_splits_test'),
         batch_size = args.batch_size
     )    
     
