@@ -80,7 +80,7 @@ export async function POST(req: Request) {
       EndpointName: env.AWS_ENDPOINT_NAME,
       ContentType: "application/json",
       Body: JSON.stringify({
-        video_path: `s3://your-bucket-name/${key}`,
+        video_path: `s3://${env.AWS_INFERENCE_BUCKET}/${key}`,
       }),
     });
 

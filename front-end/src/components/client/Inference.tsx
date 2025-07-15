@@ -32,7 +32,7 @@ export type Analysis = {
       end_time: number;
       text: string;
       emotions: Array<{ label: string; confidence: number }>;
-      sentiments: Array<{ label: string; confidence: number }>;
+      sentiment: Array<{ label: string; confidence: number }>;
     }>;
   };
 };
@@ -52,7 +52,7 @@ export function Inference({ quota }: InferenceProps) {
         if (!emotionScores[emotion.label]) emotionScores[emotion.label] = [];
         emotionScores[emotion.label]!.push(emotion.confidence);
       });
-      utterance.sentiments.forEach((sentiment) => {
+      utterance.sentiment.forEach((sentiment) => {
         if (!sentimentScores[sentiment.label])
           sentimentScores[sentiment.label] = [];
         sentimentScores[sentiment.label]!.push(sentiment.confidence);
@@ -175,7 +175,7 @@ export function Inference({ quota }: InferenceProps) {
                 {/* Sentiments */}
                 <div className="flex w-full max-w-48 flex-col gap-2">
                   <span className="text-sm font-medium">Sentiments</span>
-                  {utterance.sentiments.map((sentiment, i) => {
+                  {utterance.sentiment.map((sentiment, i) => {
                     return (
                       <div
                         key={sentiment.label}
