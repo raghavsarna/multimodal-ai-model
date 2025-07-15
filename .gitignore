@@ -3,3 +3,5 @@
 
 # Ignore the MELD.Raw.tar.gz file
 /MELD.Raw.tar.gz
+
+/deployment/model/
